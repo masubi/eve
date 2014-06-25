@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project default="build" name="Create runScriptnable Eve Jar">
+    <!--ANT 1.7 is required-->
+
+    <!-- src var -->
+    <property name="lib.src" value="./lib" />
+    <property name="src" value="./src" />
+
+    <property name="config.file" value="config.properties"/>
+    <property name="config.src" value="${src}/config/${config.file}"/>
+    <property name="runScript.name" value="run.sh"/>
+    <property name="runScript.src" value="${src}/config/${runScript.name}"/>
+
+    <!-- dest vars -->
+    <property name="build" value="./build" />
+    <property name="jar.name" value="eve.jar" />
+    <property name="jar.dist" value="${build}/${jar.name}" />
+    <property name="lib.dist" value="${build}/lib" />
+    <property name="config.dist" value="${build}/${config.file}" />
+    <property name="runScript.dist" value="${build}/${runScript.name}" />
+
+    <target name="clean">
+        <delete dir="${build}" />
+    </target>
+
+    <target name="compile" depends="clean">
+        <mkdir dir="${build}" />
+        <mkdir dir="${lib.dist}" />
+
+        <javac srcdir="${src}"
+               destdir="${build}"
+               debug="on"
+        />
+    </target>
+
+    <target name="build" depends="compile">
+        <echo message="create jar:  ${jar.dist}"/>
+        <jar destfile="${jar.dist}">
+            <manifest>
+                <attribute name="Main-Class" value="eve.Main" />
+                <attribute name="Class-Path" value="${build}/eve/"/>
+            </manifest>
+            <fileset dir="./${build}" />
+        </jar>
+
+        <copy file="${config.src}"
+              tofile="${config.dist}" verbose="true"/>
+        <copy file="${runScript.src}"
+              tofile="${runScript.dist}" verbose="true"/>
+
+        <chmod perm="777" type="both">
+            <fileset dir="./${build}" includes="**" />
+        </chmod>
+
+    </target>
+
+    <target name="run" depends="build">
+        <java jar="${jar.dist}" fork="true" >
+            <jvmarg value = "-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=8787"/>
+            <arg value="${config.dist}"/>
+        </java>
+    </target>
+</project>
