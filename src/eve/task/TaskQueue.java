@@ -32,7 +32,7 @@ public class TaskQueue implements ITaskQueue {
 	//
 	// Main data structures
 	//
-	private HashMap<String, Task> waitingRegistry = new HashMap<String, Task>();
+	private HashMap<String, Task> waitingRegistry = new HashMap<String, Task>(); //k=filepathName, v=Task
 	public Queue<Task> waitQueue = new LinkedList<Task>();
 
 	//
@@ -42,17 +42,8 @@ public class TaskQueue implements ITaskQueue {
 	public long statTotTasksPopped = 0;
 	public long statTotDupeTasks = 0;
 
-	//
-	// check initialized properly
-	//
-	private static boolean needsInit = true;
-
-
-
 	public TaskQueue() {
 		fillCount.drainPermits(); // needs to be 0 permits per the
-		// producer-consumer pattern for empty queue
-		needsInit = false;
 	}
 
     //
@@ -81,74 +72,51 @@ public class TaskQueue implements ITaskQueue {
 
 
 	public void pushTask(Task t) {
-
-		// check if TaskQueue has been initialized
-		if (needsInit)
-			Logger.info("TaskQueue is not initialized!!");
-
 		if(t==null){
 			Logger.info("TaskQueue.pushTask had t==null");
 			return;
 		}
 			
-		// if should add to waiting queue
 		boolean addToQueueFlag = false;
 
-		if (t.isFSEvent()) {
+        //
+        // check if t in taskRegistry-> lk, dedupe, unlk and do NOT add to
+        // queue
+        //
+        synchronized (waitingRegistry) {
+            // collect all events under the target directory
+            if(isSubPathOfConfig(t.filePathName)){
+                t.filePathName=eve.Main.config.getProperty("targetDir");
+            }
 
-			//
-			// check if t in taskRegistry-> lk, dedupe, unlk and do NOT add to
-			// queue
-			//
-			synchronized (waitingRegistry) {
-                if(isSubPathOfConfig(t.filePathName)){
-                    t.filePathName=eve.Main.config.getProperty("targetDir");
+            if (waitingRegistry.containsKey(t.filePathName)) {
+                Task currTask = waitingRegistry.get(t.filePathName);
+                TaskAction ta = dedupeFSEvent(t, currTask);
+                t.action = ta;
+                waitingRegistry.put(t.filePathName, t);
+                statTotDupeTasks++;
+                Logger.info("waitingRegistry contains "+t.filePathName);
+            } else {
+                addToQueueFlag = true;
+            }
+        }
+
+        if (addToQueueFlag == true) {
+            try {
+                this.emptyCount.acquire();
+            } catch (InterruptedException e) {
+                Logger.error(e.toString());
+            }
+            synchronized (waitingRegistry) {
+                Logger.info("waitingRegistry does NOT contain "+t.filePathName);
+                waitingRegistry.put(t.filePathName, t);
+                synchronized (waitQueue) {
+                    waitQueue.add(t);
                 }
 
-				if (waitingRegistry.containsKey(t.filePathName)) {
-					Task currTask = waitingRegistry.get(t.filePathName);
-
-					// if there exists and entry and it is an FSEvent then
-					// dedupe
-					if (currTask.isFSEvent()) {
-						TaskAction ta = dedupeFSEvent(t, currTask);
-						t.action = ta;
-						waitingRegistry.put(t.filePathName, t);
-						statTotDupeTasks++;
-						
-					} else {
-
-						// if there exists an entry and it is not an fs event
-						addToQueueFlag = true;
-					}
-
-				} else {
-					addToQueueFlag = true;
-				}
-			}
-
-			// if not in registry then add to queue
-			if (addToQueueFlag == true) {
-				try {
-					this.emptyCount.acquire();
-				} catch (InterruptedException e) {
-					Logger.error(e.toString());
-				}
-				synchronized (waitingRegistry) {
-					// Logger.info("waitingRegistry does NOT contain "+t.filePathName);
-
-					// put only fsEvents into registry
-					if (t.isFSEvent()) {
-						waitingRegistry.put(t.filePathName, t);
-					}
-					synchronized (waitQueue) {
-						waitQueue.add(t);
-					}
-
-				}
-				this.fillCount.release();
-			}
-		}
+            }
+            this.fillCount.release();
+        }
 
 		// Log stats
 		synchronized (waitQueue) {
@@ -206,10 +174,6 @@ public class TaskQueue implements ITaskQueue {
 
 	// prior to being called, required semaphores must be called first
 	public Task popTask() {
-
-		if (needsInit)
-			Logger.info("TaskQueue is not initialized!!");
-
 		Task taskToReturn = null;
 
 		try {

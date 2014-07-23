@@ -14,6 +14,7 @@ package eve.handler;
 import eve.Main;
 import eve.logger.Logger;
 import eve.task.Task;
+import eve.task.TaskAction;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -25,8 +26,8 @@ public class HandlerThread implements Runnable {
 	public void run() {
 		Logger.info("Handler Thread starting");
         while (Main.shutdownFlag == false) {
-            Task nextTask = this.getTask();
-            if(nextTask != null){
+            Task nextTask = this.peek();
+            if(nextTask != null && nextTask.action != TaskAction.NOACTION){
                 Logger.info("Handling "+nextTask.toString());
                 executeHandler();
             }
@@ -57,6 +58,8 @@ public class HandlerThread implements Runnable {
             if (p.waitFor() == 0)
                 Logger.debug("Handler success");
 
+            this.pop();//remove head
+
         } catch (IOException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {
@@ -65,9 +68,11 @@ public class HandlerThread implements Runnable {
 
     }
 
-
+    private Task peek(){
+        return Main.taskQueue.peek();
+    }
 	
-	private Task getTask() {
+	private Task pop() {
         return Main.taskQueue.popTask();
 	}
 }

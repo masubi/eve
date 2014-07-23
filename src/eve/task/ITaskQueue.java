@@ -11,4 +11,5 @@ public interface ITaskQueue {
     public void pushTask(Task task);
     public Task popTask();
     public String toString();
+    public Task peek();
 }
