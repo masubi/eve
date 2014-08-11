@@ -1,20 +1,10 @@
 package eve.handler;
 
-/*
- * Listener Thread
- * derived from http://docs.oracle.com/javase/tutorial/essential/io/notification.html#overview
- * 
- * 1.  Listens for file system events 
- * 2.  places them in the GlobalTaskQueue
- * 
- * Acts as Producer for TaskQueue
- */
-
-
 import eve.Main;
 import eve.logger.Logger;
 import eve.task.Task;
 import eve.task.TaskAction;
+import org.json.simple.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -29,16 +19,19 @@ public class HandlerThread implements Runnable {
             Task nextTask = this.peek();
             if(nextTask != null && nextTask.action != TaskAction.NOACTION){
                 Logger.info("Handling "+nextTask.toString());
-                executeHandler();
+                executeHandler(nextTask);
             }
         }
         Logger.info("Handler Thread Shutdown");
 	}
 
-	private void executeHandler(){
+	private void executeHandler(Task nextTask){
         try {
-            String shell =  Main.config.getProperty("shell");
-            String command = Main.config.getProperty("command");
+
+            JSONObject directive = Main.directiveTable.get(nextTask.filePathName);
+
+            String shell =  (String) directive.get("shell");
+            String command = (String) directive.get("command");
 
             Process p = Runtime.getRuntime().exec(new String[]{shell,"-c",command});
 
@@ -50,7 +43,7 @@ public class HandlerThread implements Runnable {
                 if (!line.equals(previous)) {
                     previous = line;
                     out.append(line).append('\n');
-                    System.out.println(line);
+                    Logger.info(line);
                 }
             }
 

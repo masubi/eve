@@ -1,0 +1,15 @@
+[
+{
+    "id":0,
+    "shell":"bash",
+    "targetDir":"/var/www/",
+    "command":"ls -al /var/tmp"
+},
+{
+    "id":1,
+    "shell":"bash",
+    "targetDir":"/var/www",
+    "command":"ls -alrt /tmp"
+}
+]
+

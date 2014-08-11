@@ -1,15 +1,14 @@
-package eve.listener;
-
-/*
+/**
  * Listener Thread
  * derived from http://docs.oracle.com/javase/tutorial/essential/io/notification.html#overview
- * 
- * 1.  Listens for file system events 
+ *
+ * 1.  Listens for file system events
  * 2.  places them in the GlobalTaskQueue
- * 
+ *
  * Acts as Producer for TaskQueue
  */
 
+package eve.listener;
 
 import eve.Main;
 import eve.logger.Logger;
@@ -28,60 +27,59 @@ import java.util.Map;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardWatchEventKinds.*;
 
-
 public class ListenerThread implements Runnable {
 
-	private final WatchService watcher;
-	private final Map<WatchKey, Path> keys;
-	private final boolean recursive = true;
-	private boolean trace = false;
+    private final WatchService watcher;
+    private final Map<WatchKey, Path> keys;
+    private final boolean recursive = true;
+    private boolean trace = false;
 
-	public Mode mode = Mode.PROD;
+    public Mode mode = Mode.PROD;
 
-	public enum Mode{
-		TESTING, DEBUG, PROD
-	}
-	
-	@SuppressWarnings("unchecked")
-	static <T> WatchEvent<T> cast(WatchEvent<?> event) {
-		return (WatchEvent<T>) event;
-	}
+    public enum Mode{
+        TESTING, DEBUG, PROD
+    }
+    
+    @SuppressWarnings("unchecked")
+    static <T> WatchEvent<T> cast(WatchEvent<?> event) {
+        return (WatchEvent<T>) event;
+    }
 
-	/**
-	 * Register the given directory with the WatchService
-	 */
-	private void register(Path dir) throws IOException {
-		WatchKey key = dir.register(watcher, ENTRY_CREATE, ENTRY_DELETE,
-				ENTRY_MODIFY);
+    /**
+     * Register the given directory with the WatchService
+     */
+    private void register(Path dir) throws IOException {
+        WatchKey key = dir.register(watcher, ENTRY_CREATE, ENTRY_DELETE,
+                ENTRY_MODIFY);
 
-		if (trace) {
-			Path prev = keys.get(key);
-			if (prev == null) {
-				System.out.format("register: %s\n", dir);
-			} else {
-				if (!dir.equals(prev)) {
-					System.out.format("update: %s -> %s\n", prev, dir);
-				}
-			}
-		}
-		keys.put(key, dir);
-	}
+        if (trace) {
+            Path prev = keys.get(key);
+            if (prev == null) {
+                System.out.format("register: %s\n", dir);
+            } else {
+                if (!dir.equals(prev)) {
+                    System.out.format("update: %s -> %s\n", prev, dir);
+                }
+            }
+        }
+        keys.put(key, dir);
+    }
 
-	/**
-	 * Register a file tree this is necessary for windows implementation: BUG in
-	 * jdk7 - recursive delete doesn't allow deletes of subdirectories see:
-	 * http://stackoverflow.com/questions/6255463/java7-watchservice
-	 * -access-denied-error-trying-to-delete-recursively-watched-ne
-	 * 
-	 * http://answerpot.com/showthread.php?1151653-WatchService%20-%
-	 * 20Exposing%20More%20Of%20The%20Inotify%20Event%20Model/Page2
-	 * 
-	 * On *nix and mac recursive deletes are possible without problems
-	 * 
-	 * @param dir
-	 * @throws java.io.IOException
-	 */
-	private void registerTree(Path dir) {
+    /**
+     * Register a file tree this is necessary for windows implementation: BUG in
+     * jdk7 - recursive delete doesn't allow deletes of subdirectories see:
+     * http://stackoverflow.com/questions/6255463/java7-watchservice
+     * -access-denied-error-trying-to-delete-recursively-watched-ne
+     * 
+     * http://answerpot.com/showthread.php?1151653-WatchService%20-%
+     * 20Exposing%20More%20Of%20The%20Inotify%20Event%20Model/Page2
+     * 
+     * On *nix and mac recursive deletes are possible without problems
+     * 
+     * @param dir
+     * @throws java.io.IOException
+     */
+    private void registerTree(Path dir) {
         WatchKey key = null;
         try {
             key = dir.register(watcher, new WatchEvent.Kind[]{ ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY},com.sun.nio.file.ExtendedWatchEventModifier.FILE_TREE);
@@ -89,17 +87,17 @@ public class ListenerThread implements Runnable {
             e.printStackTrace();
         }
         if (trace) {
-			Path prev = keys.get(key);
-			if (prev == null) {
-				System.out.format("register: %s\n", dir);
-			} else {
-				if (!dir.equals(prev)) {
-					System.out.format("update: %s -> %s\n", prev, dir);
-				}
-			}
-		}
-		keys.put(key, dir);
-	}
+            Path prev = keys.get(key);
+            if (prev == null) {
+                System.out.format("register: %s\n", dir);
+            } else {
+                if (!dir.equals(prev)) {
+                    System.out.format("update: %s -> %s\n", prev, dir);
+                }
+            }
+        }
+        keys.put(key, dir);
+    }
 
 
     /**
@@ -119,48 +117,34 @@ public class ListenerThread implements Runnable {
         });
     }
 
-	private void genTasksForFilesInDir(final Path start, final TaskAction ta) throws IOException {
-		// register directory and sub-directories
-		Files.walkFileTree(start, new SimpleFileVisitor<Path>() {
-		
-			@Override
-			public FileVisitResult visitFile(Path dir,
-					BasicFileAttributes attrs) throws IOException {
-				if(dir.toFile().isFile()){
-					produceTask(new Task(dir.toString(), ta));
-				}
-				return FileVisitResult.CONTINUE;
-			}
-		});
-	}
-	
-	private void genTasksForFilesInDir(final Path start, final TaskAction ta, final Date date) throws IOException {
-		// register directory and sub-directories
-		Files.walkFileTree(start, new SimpleFileVisitor<Path>() {
-		
-			@Override
-			public FileVisitResult visitFile(Path dir,
-					BasicFileAttributes attrs) throws IOException {
-				if(dir.toFile().isFile()){
-					produceTask(new Task(dir.toString(), ta, date));
-				}
-				return FileVisitResult.CONTINUE;
-			}
-		});
-	}
-	
-	/**
-	 * Creates a WatchService and registers the given directory
-	 */
-	ListenerThread(String pathToRegister) throws IOException {
-		Path dir = Paths.get(pathToRegister);
-		this.watcher = FileSystems.getDefault().newWatchService();
-		this.keys = new HashMap<WatchKey, Path>();
+    private void genTasksForFilesInDir(final Path start, final TaskAction ta) throws IOException {
+        // register directory and sub-directories
+        Files.walkFileTree(start, new SimpleFileVisitor<Path>() {
+        
+            @Override
+            public FileVisitResult visitFile(Path dir,
+                    BasicFileAttributes attrs) throws IOException {
+                if(dir.toFile().isFile()){
+                    produceTask(new Task(dir.toString(), ta));
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+    
 
-		// TODO: needs to handle permission denied
+    /**
+     * Creates a WatchService and registers the given directory
+     */
+    ListenerThread(String pathToRegister) throws IOException {
+        Path dir = Paths.get(pathToRegister);
+        this.watcher = FileSystems.getDefault().newWatchService();
+        this.keys = new HashMap<WatchKey, Path>();
+
+        // TODO: needs to handle permission denied
         StopWatch timer = new StopWatch(false);
         timer.start();
-        System.out.format("Listener Scanning %s ...\n", dir);
+        Logger.info("Listener listening on "+dir+"...");
         if (System.getProperty("os.name").startsWith("Windows")) {
             // includes: Windows 2000,  Windows 95, Windows 98, Windows NT, Windows Vista, Windows XP
             registerTree(dir);
@@ -173,33 +157,32 @@ public class ListenerThread implements Runnable {
         // enable trace after initial registration
         this.trace = true;
 
-		
-	}
+        
+    }
 
-	private static TaskAction watchEventAsTaskAction(WatchEvent ev) {
-		if (ev.kind() == ENTRY_MODIFY) {
-			return TaskAction.MODIFY;
-		}
-		if (ev.kind() == ENTRY_DELETE) {
-			return TaskAction.DELETE;
-		}
-		if (ev.kind() == ENTRY_CREATE) {
-			return TaskAction.CREATE;
-		}
-		return null;
-	}
+    private static TaskAction watchEventAsTaskAction(WatchEvent ev) {
+        if (ev.kind() == ENTRY_MODIFY) {
+            return TaskAction.MODIFY;
+        }
+        if (ev.kind() == ENTRY_DELETE) {
+            return TaskAction.DELETE;
+        }
+        if (ev.kind() == ENTRY_CREATE) {
+            return TaskAction.CREATE;
+        }
+        return null;
+    }
 
-	private boolean timerStarted=false;
-	private final int MAX_EVENTS_BEFORE_SKIP=100;
-	private final int TIMEINTERVAL=1000;
-	private int count = 0;
-	StopWatch eventTimer = new StopWatch(false);
+    private final int MAX_EVENTS_BEFORE_SKIP=100;
+    private final int TIMEINTERVAL=1000;
+    private int count = 0;
+    StopWatch eventTimer = new StopWatch(false);
 
-	@Override
-	public void run() {
-		Logger.info("Listener Thread starting");
+    @Override
+    public void run() {
+        Logger.debug("Listener Thread starting");
 
-		
+        
         while (Main.shutdownFlag == false) {
 
             // wait for key to be signalled
@@ -312,19 +295,17 @@ public class ListenerThread implements Runnable {
         }
         Logger.info("Listener Thread Shutdown");
 
-	}
-	
-	
+    }
 
-	
-	/**
-	 * Desc: Producer side of producers/consumers design pattern. Other
-	 * producers are GC, CheckPoint, Restore Consumers is the
-	 * MasterThreadManager thread
-	 * 
-	 */
-	private void produceTask(Task taskToPush) {
+    
+    /**
+     * Producer side of producers/consumers design pattern. Other
+     * producers are GC, CheckPoint, Restore Consumers is the
+     * MasterThreadManager thread
+     * 
+     */
+    private void produceTask(Task taskToPush) {
         Logger.info(taskToPush.toString());
         Main.taskQueue.pushTask(taskToPush);
-	}
+    }
 }
