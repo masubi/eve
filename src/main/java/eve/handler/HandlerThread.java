@@ -16,7 +16,7 @@ public class HandlerThread implements Runnable {
 	public void run() {
 		Logger.info("Handler Thread starting");
         while (Main.shutdownFlag == false) {
-            Task nextTask = this.peek();
+            Task nextTask =  this.pop();
             if(nextTask != null && nextTask.action != TaskAction.NOACTION){
                 Logger.info("Handling "+nextTask.toString());
                 executeHandler(nextTask);
@@ -50,8 +50,6 @@ public class HandlerThread implements Runnable {
             //Check result
             if (p.waitFor() == 0)
                 Logger.debug("Handler success");
-
-            this.pop();//remove head
 
         } catch (IOException e) {
             e.printStackTrace();
