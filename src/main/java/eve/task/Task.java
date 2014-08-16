@@ -65,7 +65,8 @@ public class Task implements Serializable{
 
     @Override
     public String toString() {
-        return new String(this.action + ":::" + this.filePathName);
+        //return new String(this.action + ":::" + this.filePathName);
+        return new String(this.action.toString());
     }
 
 }

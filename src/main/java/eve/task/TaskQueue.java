@@ -20,29 +20,18 @@ import java.util.concurrent.Semaphore;
  */
 public class TaskQueue implements ITaskQueue {
 
-    //
     // semaphores for producer/consumer model
-    //
-    // capacity of TaskQueue
-    private final int CAPACITY = 20000;
+    private final int CAPACITY = 20000;  // capacity of TaskQueue
     public Semaphore fillCount = new Semaphore(CAPACITY, true);
     public Semaphore emptyCount = new Semaphore(CAPACITY, true);
 
-    //
+
     // Main data structures
-    //
     private HashMap<String, Task> waitingRegistry = new HashMap<String, Task>(); //k=filepathName, v=Task
     public Queue<Task> waitQueue = new LinkedList<Task>();
 
-    //
-    // Statistics variables
-    //
-    public long statTotTasksPushed = 0;
-    public long statTotTasksPopped = 0;
-    public long statTotDupeTasks = 0;
-
     public TaskQueue() {
-        fillCount.drainPermits(); // needs to be 0 permits per the
+        fillCount.drainPermits();
     }
 
     
@@ -62,7 +51,7 @@ public class TaskQueue implements ITaskQueue {
             Logger.info("TaskQueue.pushTask had t==null");
             return;
         }
-            
+
         boolean addToQueueFlag = false;
 
         //
@@ -82,19 +71,30 @@ public class TaskQueue implements ITaskQueue {
                 TaskAction ta = dedupeFSEvent(t, currTask);
                 t.action = ta;
                 waitingRegistry.put(t.filePathName, t);
-                statTotDupeTasks++;
                 Logger.debug("waitingRegistry contains "+t.filePathName+" updating action to "+t.toString());
+
+                // hack
+                if(fillCount.availablePermits()==0)
+                    addToQueueFlag=true;
+
             } else {
                 addToQueueFlag = true;
             }
         }
 
         if (addToQueueFlag == true) {
+
+            //
+            //  Begining of bounded buffer add
+            //
             try {
+                Logger.debug("pushTask() - locking emptyCount="+emptyCount.availablePermits());
+                Logger.debug("pushTask() - locking fillCount="+fillCount.availablePermits());
                 this.emptyCount.acquire();
             } catch (InterruptedException e) {
                 Logger.error(e.toString());
             }
+
             synchronized (waitingRegistry) {
                 Logger.debug("waitingRegistry does NOT contain "+t.filePathName+" so adding");
                 Logger.info("adding "+t.toString());
@@ -105,11 +105,8 @@ public class TaskQueue implements ITaskQueue {
 
             }
             this.fillCount.release();
-        }
-
-        // Log stats
-        synchronized (waitQueue) {
-            statTotTasksPushed++;
+            Logger.debug("pushTask() - unlocking emptyCount="+emptyCount.availablePermits());
+            Logger.debug("pushTask() - unlocking fillCount="+fillCount.availablePermits());
         }
     }
 
@@ -166,14 +163,17 @@ public class TaskQueue implements ITaskQueue {
     // prior to being called, required semaphores must be called first
     public Task popTask() {
         Task taskToReturn = null;
-
+        Logger.debug("popTask() - locking emptyCount="+emptyCount.availablePermits());
+        Logger.debug("popTask() - locking fillCount="+fillCount.availablePermits());
         try {
             this.fillCount.acquire();
+            Logger.debug("popTask() - fillCount acquired="+fillCount.availablePermits());
         } catch (InterruptedException e) {
-            Logger.error(e.toString());
+            return null;
         }
 
-        synchronized (waitQueue) {
+        synchronized (waitingRegistry) {
+
             // catch nulls
             if (this.isEmpty()) {
                 taskToReturn = null;
@@ -196,12 +196,8 @@ public class TaskQueue implements ITaskQueue {
         }
 
         this.emptyCount.release();
-
-        // STATS
-        synchronized (waitQueue) {
-            statTotTasksPopped++;
-        }
-
+        Logger.debug("popTask() - unlocking emptyCount=" + emptyCount.availablePermits());
+        Logger.debug("popTask() - unlocking fillCount="+fillCount.availablePermits());
         return taskToReturn;
     }
 
@@ -219,7 +215,7 @@ public class TaskQueue implements ITaskQueue {
         return waitQueue.isEmpty();
     }
 
-    public synchronized void printQueue() {
+/*    public synchronized void printQueue() {
         ArrayList<Task> arr = new ArrayList<Task>();
         synchronized(waitQueue){
             Iterator<Task> j = waitQueue.iterator();
@@ -240,7 +236,7 @@ public class TaskQueue implements ITaskQueue {
             }
         }
 
-    }
+    }*/
 
     @Override
     public synchronized String toString() {

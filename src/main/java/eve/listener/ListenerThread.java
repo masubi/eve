@@ -192,14 +192,12 @@ public class ListenerThread implements Runnable {
                 // key = watcher.poll(33, TimeUnit.MILLISECONDS);
 
             } catch (InterruptedException x) {
-                System.out
-                        .println("Listener Thread Shutdown Interrupt Recieved");
+                Logger.info("Listener Thread Shutdown Interrupt Recieved");
                 return;
             }
 
             Path dir = keys.get(key);
             if (dir == null) {
-                // System.err.println("WatchKey not recognized!!");
                 continue;
             }
 
@@ -233,8 +231,7 @@ public class ListenerThread implements Runnable {
 
                 // TODO: handle OVERFLOW event
                 if (kind == OVERFLOW) {
-                    System.out
-                            .println("ERROR:  Overflow event detected in Listener");
+                    Logger.error("Overflow event detected in Listener");
                     System.exit(0);
                     continue;
                 }
@@ -305,7 +302,7 @@ public class ListenerThread implements Runnable {
      * 
      */
     private void produceTask(Task taskToPush) {
-        Logger.info(taskToPush.toString());
+        Logger.info("pushing task: "+taskToPush.toString());
         Main.taskQueue.pushTask(taskToPush);
     }
 }
