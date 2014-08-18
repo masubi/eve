@@ -46,20 +46,29 @@ public class TaskQueue implements ITaskQueue {
         return null;
     }
 
+    /**
+     * If a Task already exists in WaitingRegistry then add a NOACTION.
+     * Each non-NOACTION task is a Task representing all subsequent NOACTION tasks
+     * for a time period.
+     *
+     * @param t
+     */
     public void pushTask(Task t) {
         if(t==null){
             Logger.info("TaskQueue.pushTask had t==null");
             return;
         }
 
-        boolean addToQueueFlag = false;
+        //  Begining of bounded buffer add
+        try {
+            //Logger.debug("pushTask() - locking emptyCount="+emptyCount.availablePermits());
+            //Logger.debug("pushTask() - locking fillCount="+fillCount.availablePermits());
+            this.emptyCount.acquire();
+        } catch (InterruptedException e) {
+            Logger.error(e.toString());
+        }
 
-        //
-        // check if t in taskRegistry-> lk, dedupe, unlk and do NOT add to
-        // queue
-        //
         synchronized (waitingRegistry) {
-
             // collect all events under the target directory
             String parentPath = getSubPathOfConfig(t.filePathName);
             if(parentPath!=null){
@@ -67,47 +76,20 @@ public class TaskQueue implements ITaskQueue {
             }
 
             if (waitingRegistry.containsKey(t.filePathName)) {
-                Task currTask = waitingRegistry.get(t.filePathName);
-                TaskAction ta = dedupeFSEvent(t, currTask);
-                t.action = ta;
+                t.action = TaskAction.NOACTION;
+                Logger.debug("NOACTION : "+t.filePathName);
+            }else{
+                //Logger.info("adding "+t.toString());
                 waitingRegistry.put(t.filePathName, t);
-                Logger.debug("waitingRegistry contains "+t.filePathName+" updating action to "+t.toString());
-
-                // hack
-                if(fillCount.availablePermits()==0)
-                    addToQueueFlag=true;
-
-            } else {
-                addToQueueFlag = true;
+            }
+            synchronized (waitQueue) {
+                waitQueue.add(t);
             }
         }
 
-        if (addToQueueFlag == true) {
-
-            //
-            //  Begining of bounded buffer add
-            //
-            try {
-                Logger.debug("pushTask() - locking emptyCount="+emptyCount.availablePermits());
-                Logger.debug("pushTask() - locking fillCount="+fillCount.availablePermits());
-                this.emptyCount.acquire();
-            } catch (InterruptedException e) {
-                Logger.error(e.toString());
-            }
-
-            synchronized (waitingRegistry) {
-                Logger.debug("waitingRegistry does NOT contain "+t.filePathName+" so adding");
-                Logger.info("adding "+t.toString());
-                waitingRegistry.put(t.filePathName, t);
-                synchronized (waitQueue) {
-                    waitQueue.add(t);
-                }
-
-            }
-            this.fillCount.release();
-            Logger.debug("pushTask() - unlocking emptyCount="+emptyCount.availablePermits());
-            Logger.debug("pushTask() - unlocking fillCount="+fillCount.availablePermits());
-        }
+        this.fillCount.release();
+        //Logger.debug("pushTask() - unlocking emptyCount="+emptyCount.availablePermits());
+        //Logger.debug("pushTask() - unlocking fillCount="+fillCount.availablePermits());
     }
 
 
@@ -163,11 +145,11 @@ public class TaskQueue implements ITaskQueue {
     // prior to being called, required semaphores must be called first
     public Task popTask() {
         Task taskToReturn = null;
-        Logger.debug("popTask() - locking emptyCount="+emptyCount.availablePermits());
-        Logger.debug("popTask() - locking fillCount="+fillCount.availablePermits());
+        //Logger.debug("popTask() - locking emptyCount="+emptyCount.availablePermits());
+        //Logger.debug("popTask() - locking fillCount="+fillCount.availablePermits());
         try {
             this.fillCount.acquire();
-            Logger.debug("popTask() - fillCount acquired="+fillCount.availablePermits());
+            //Logger.debug("popTask() - fillCount acquired="+fillCount.availablePermits());
         } catch (InterruptedException e) {
             return null;
         }
@@ -179,25 +161,18 @@ public class TaskQueue implements ITaskQueue {
                 taskToReturn = null;
             } else {
                 // remove from queue
-                taskToReturn = waitQueue.remove();
+                taskToReturn=waitQueue.remove();
 
-                // if file system event -> remove from HashTable
-                if (taskToReturn.isFSEvent()) {
-
-                    // waitingRegistry has the most recent TaskAction
-                    if (waitingRegistry.containsKey(taskToReturn.filePathName)) {
-                        taskToReturn = waitingRegistry
-                                .remove(taskToReturn.filePathName);
-                    }
+                // waitingRegistry has the most recent TaskAction
+                if (waitingRegistry.containsKey(taskToReturn.filePathName)) {
+                    taskToReturn = waitingRegistry.remove(taskToReturn.filePathName);
                 }
-                // if not fs event then simply return what was removed from
-                // queue
             }
         }
 
         this.emptyCount.release();
-        Logger.debug("popTask() - unlocking emptyCount=" + emptyCount.availablePermits());
-        Logger.debug("popTask() - unlocking fillCount="+fillCount.availablePermits());
+        //Logger.debug("popTask() - unlocking emptyCount=" + emptyCount.availablePermits());
+        //Logger.debug("popTask() - unlocking fillCount="+fillCount.availablePermits());
         return taskToReturn;
     }
 

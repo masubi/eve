@@ -10,6 +10,7 @@ public class Task implements Serializable{
     public TaskStatus status;
     public int numProcessAttempts;
     public Date date;
+    private long timestamp;
     
     public enum TaskStatus {
         WAITING, COMPLETE
@@ -23,6 +24,7 @@ public class Task implements Serializable{
         this.filePathName = newFilePathName;
         this.status = TaskStatus.WAITING;
         this.numProcessAttempts=0;
+        this.createTimeStamp();
     }
 
     public Task(String newFilePathName, TaskAction newAction, TaskStatus s) {
@@ -31,6 +33,7 @@ public class Task implements Serializable{
         this.status = s;
         this.status = TaskStatus.WAITING;
         this.numProcessAttempts=0;
+        this.createTimeStamp();
     }
     
     /**
@@ -41,6 +44,7 @@ public class Task implements Serializable{
         this.action=newAction;
         this.status = TaskStatus.WAITING;
         this.numProcessAttempts=0;
+        this.createTimeStamp();
     }
     
     public Task(String filePathName, TaskAction newTaskAction,
@@ -50,6 +54,7 @@ public class Task implements Serializable{
         this.status = TaskStatus.WAITING;
         this.numProcessAttempts=0;
         this.date=date;
+        this.createTimeStamp();
     }
 
     public boolean isFSEvent() {
@@ -61,6 +66,14 @@ public class Task implements Serializable{
         } else {
             return false;
         }
+    }
+
+    private void createTimeStamp(){
+        timestamp=System.currentTimeMillis();
+    }
+
+    public long getTimestamp(){
+        return timestamp;
     }
 
     @Override
