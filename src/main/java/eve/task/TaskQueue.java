@@ -222,7 +222,6 @@ public class TaskQueue implements ITaskQueue {
                 arr.add(t);
             }
         }
-        
         synchronized(waitingRegistry){
             for(Task t : arr){
                 // check waitingRegistry for most recent TaskAction
@@ -232,7 +231,6 @@ public class TaskQueue implements ITaskQueue {
                 sb.append("     " + t.action + ":" + t.filePathName+"\n");
             }
         }
-        
         return sb.toString();
     }
 }

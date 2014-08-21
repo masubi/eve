@@ -11,9 +11,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Hashtable;
 
-
 public class HandlerThread implements Runnable {
-    public static long bufferDelay=1000; //amount of time to wait between last execute
+    public static long bufferDelay=2000; //amount of time to wait between last execute
 
 	@Override
 	public void run() {
@@ -30,14 +29,17 @@ public class HandlerThread implements Runnable {
 
             // check within buffer delay
             if(outsideBuffer(nextTask)){
-                updateHistoryExecute(nextTask);
-                Logger.info("Handling "+nextTask.toString());
-                Logger.debug("executeTimes: "+history.get(nextTask.filePathName).executeTimes+
-                        ", noactionEvents: "+history.get(nextTask.filePathName).noactionEvents);
-                executeHandler(nextTask);
+                if(isFirst(nextTask)){
+                    updateHistoryRequeue(nextTask);
+                    requeueTask(nextTask, getTimeSinceLastExecute(nextTask));
+                }else{
+                    Logger.info("Handling " + nextTask.toString());
+                    executeHandler(nextTask);
+                    updateHistoryExecute(nextTask);
+                }
             }else{
-                //Logger.info("Requeue "+nextTask.toString());
-                requeueTask(nextTask);
+                updateHistoryRequeue(nextTask);
+                requeueTask(nextTask, getTimeSinceLastExecute(nextTask));
             }
         }
         Logger.info("Handler Thread Shutdown");
@@ -66,8 +68,12 @@ public class HandlerThread implements Runnable {
             }
 
             //Check result
-            if (p.waitFor() == 0)
+            if (p.waitFor() == 0){
                 Logger.debug("Handler success");
+                Logger.debug("executeTimes: " + history.get(nextTask.filePathName).executeTimes +
+                    ", noactionEvents: " + history.get(nextTask.filePathName).noactionEvents +
+                    ", requeueEvents: " + history.get(nextTask.filePathName).requeues);
+            }
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -81,8 +87,10 @@ public class HandlerThread implements Runnable {
         return Main.taskQueue.popTask();
     }
 
-    private void requeueTask(Task t){
-        Main.taskQueue.pushTask(t);
+    private void requeueTask(Task t, long timeToSleep){
+        Runnable runnable=new RequeueThread(t, timeToSleep);
+        Thread handler = new Thread(runnable);
+        handler.start();
     }
 
     //
@@ -93,11 +101,15 @@ public class HandlerThread implements Runnable {
         public long lastExecuteTime;
         public double noactionEvents;
         public double executeTimes=0;
+        public long requeues=0;
+        public boolean isfirst=false;
 
         Log(){
             lastExecuteTime=0;
             noactionEvents=0;
             executeTimes=0;
+            requeues=0;
+            isfirst=true;
         }
     }
     public static Hashtable<String, Log> history = new Hashtable<String,Log>();
@@ -105,6 +117,7 @@ public class HandlerThread implements Runnable {
     private static void updateHistoryNoAction(Task t){
         if(!history.containsKey(t.filePathName)){
             Log l = new Log();
+            l.noactionEvents=1;
             history.put(t.filePathName, l);
         }else{
             Log l = history.get(t.filePathName);
@@ -116,27 +129,68 @@ public class HandlerThread implements Runnable {
     public static void updateHistoryExecute(Task t){
         if(!history.containsKey(t.filePathName)){
             Log l = new Log();
+            l.executeTimes=1;
             l.lastExecuteTime=System.currentTimeMillis();
             history.put(t.filePathName, l);
         }else{
             Log l = history.get(t.filePathName);
             l.lastExecuteTime=System.currentTimeMillis();
             l.executeTimes++;
+            l.isfirst=false;
+            history.put(t.filePathName, l);
+          }
+    }
+    
+    public static void updateHistoryRequeue(Task t){
+        if(!history.containsKey(t.filePathName)){
+            Log l = new Log();
+            l.requeues=1;
+            history.put(t.filePathName, l);
+        }else{
+            Log l = history.get(t.filePathName);
+            l.isfirst=false;
+            l.requeues++;
             history.put(t.filePathName, l);
         }
     }
 
-    private static boolean outsideBuffer(Task t){
-        if(!history.containsKey(t.filePathName))
+    public static long getTimeSinceLastExecute(Task t){
+        if(history.containsKey(t.filePathName)){
+            return bufferDelay-(System.currentTimeMillis()-history.get(t.filePathName).lastExecuteTime);
+        }else{
+            return 0;
+        }
+    }
+
+    private static boolean isFirst(Task t){
+        if(!history.containsKey(t.filePathName)){
+            Log l = new Log();
+            l.lastExecuteTime=System.currentTimeMillis();
+            history.put(t.filePathName,l);
             return true;
+        }else{
+            Log l = history.get(t.filePathName);
+            return l.isfirst;
+        }
+    }
+
+
+    private static boolean outsideBuffer(Task t){
+        if(!history.containsKey(t.filePathName)){
+            Log l = new Log();
+            l.lastExecuteTime=System.currentTimeMillis();
+            history.put(t.filePathName,l);
+            return false;
+        }
+
 
         if(history.containsKey(t.filePathName)){
             Log l = history.get(t.filePathName);
             long currTime = System.currentTimeMillis();
             if(currTime-l.lastExecuteTime<bufferDelay){
-                //Logger.debug("timeSinceLastExecute: "+(currTime-l.lastExecuteTime));
                 return false;
             }else{
+                Logger.debug("timeSinceLastExecute: "+(currTime-l.lastExecuteTime));
                 return true;
             }
         }
