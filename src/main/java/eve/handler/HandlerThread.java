@@ -12,31 +12,32 @@ import java.io.InputStreamReader;
 import java.util.Hashtable;
 
 public class HandlerThread implements Runnable {
-    public static long bufferDelay=2000;
+    public static long bufferDelay=1000;
 
 	@Override
 	public void run() {
 		Logger.info("Handler Thread starting");
         while (Main.shutdownFlag == false) {
             // peek and buffer
-            Task check = peek();
-
-            if(check != null && check.action != TaskAction.NOACTION){
+            Task nextTask =  this.pop();
+            if(nextTask != null && nextTask.action != TaskAction.NOACTION){
                 try{
-                    Logger.debug("sleeping "+bufferDelay+" ms");
-                    Thread.sleep(bufferDelay);
-                    Logger.debug("slept "+bufferDelay+" ms");
+                    if(nextTask.deferred){
+                        Logger.info("Handling " + nextTask.toString());
+                        nextTask.deferred=false;
+                        executeHandler(nextTask);
+                    }else{
+                        nextTask.deferred=true;
+                        requeueTask(nextTask, 0);
+                        Logger.debug("sleeping "+bufferDelay+" ms");
+                        Thread.sleep(bufferDelay);
+                        Logger.debug("slept "+bufferDelay+" ms");
+                    }
                 }catch(Exception e){
                     Logger.error("Failed to sleep ... eyes in the dark ... one moon circling");
                 }
-
-                Task nextTask =  this.pop();
-
-                // ignore no actions
-                if(nextTask != null && nextTask.action != TaskAction.NOACTION){
-                    Logger.info("Handling " + nextTask.toString());
-                    executeHandler(nextTask);
-                }
+            } else {
+                continue;
             }
         }
         Logger.info("Handler Thread Shutdown");
@@ -76,11 +77,13 @@ public class HandlerThread implements Runnable {
 
     }
 
-    private Task peek(){
-        return Main.taskQueue.peek();
+    private Task pop() {
+        return Main.taskQueue.popTask();
     }
 
-	private Task pop() {
-        return Main.taskQueue.popTask();
+    private void requeueTask(Task t, long timeToSleep){
+        Runnable runnable=new RequeueThread(t, timeToSleep);
+        Thread handler = new Thread(runnable);
+        handler.start();
     }
 }

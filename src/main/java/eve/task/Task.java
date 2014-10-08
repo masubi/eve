@@ -10,6 +10,7 @@ public class Task implements Serializable{
     public TaskStatus status;
     public int numProcessAttempts;
     public Date date;
+    public boolean deferred=false;
     private long timestamp;
     
     public enum TaskStatus {
